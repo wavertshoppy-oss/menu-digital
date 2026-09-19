@@ -11,6 +11,7 @@ import {
   X,
   Check,
   Filter,
+  Trash2,
 } from 'lucide-react';
 import { Producto, MovimientoInventario, TipoMovimientoInventario, UserAuth } from '../../types';
 import { inventarioService } from '../../services/inventarioService';
@@ -110,6 +111,42 @@ export const InventarioView: React.FC<InventarioViewProps> = ({
       alert('Error al registrar movimiento: ' + err.message);
     } finally {
       setSavingMovement(false);
+    }
+  };
+
+  const handleDeleteMovimiento = async (m: MovimientoInventario) => {
+    if (!m.id) return;
+    if (
+      !window.confirm(
+        `¿Deseas eliminar este registro de movimiento (${m.productoNombre || m.producto} - ${m.tipo})? Se eliminará de la base de datos Firestore.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await inventarioService.deleteMovimiento(m.id);
+      onRefreshData?.();
+    } catch (err: any) {
+      alert('Error al eliminar movimiento: ' + err.message);
+    }
+  };
+
+  const handleDeleteProducto = async (prod: Producto) => {
+    if (!prod.id) return;
+    if (
+      !window.confirm(
+        `¿Deseas eliminar "${prod.nombre}" del inventario y catálogo? Se borrará permanentemente de Firestore.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await productosService.eliminarProducto(prod.id);
+      onRefreshData?.();
+    } catch (err: any) {
+      alert('Error al eliminar producto: ' + err.message);
     }
   };
 
@@ -282,6 +319,13 @@ export const InventarioView: React.FC<InventarioViewProps> = ({
                             >
                               Ajustar
                             </button>
+                            <button
+                              onClick={() => handleDeleteProducto(prod)}
+                              className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer inline-flex items-center align-middle"
+                              title="Eliminar producto de Firestore y catálogo"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </td>
                         </tr>
                       );
@@ -307,12 +351,13 @@ export const InventarioView: React.FC<InventarioViewProps> = ({
                   <th className="p-3.5">Stock Anterior &rarr; Nuevo</th>
                   <th className="p-3.5">Motivo</th>
                   <th className="p-3.5">Responsable</th>
+                  <th className="p-3.5 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
                 {movimientos.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-stone-400">
+                    <td colSpan={8} className="p-8 text-center text-stone-400">
                       Aún no hay movimientos registrados en el inventario.
                     </td>
                   </tr>
@@ -349,6 +394,15 @@ export const InventarioView: React.FC<InventarioViewProps> = ({
                       </td>
                       <td className="p-3.5 text-stone-500">
                         {m.responsable || m.usuario || 'Admin'}
+                      </td>
+                      <td className="p-3.5 text-right whitespace-nowrap">
+                        <button
+                          onClick={() => handleDeleteMovimiento(m)}
+                          className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                          title="Eliminar este movimiento de Firestore"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </td>
                     </tr>
                   ))

@@ -82,11 +82,14 @@ export const CategoriasView: React.FC<CategoriasViewProps> = ({
     if (!cat.id) return;
     const prodsInCat = productos.filter((p) => p.categoria === cat.nombre);
     if (prodsInCat.length > 0) {
-      alert(`No se puede eliminar la categoría "${cat.nombre}" porque tiene ${prodsInCat.length} productos asociados.`);
-      return;
+      if (!window.confirm(`La categoría "${cat.nombre}" tiene ${prodsInCat.length} producto(s) asignado(s). ¿Deseas eliminarla de todas formas? Se eliminará de Firestore y los productos podrán ser reasignados.`)) {
+        return;
+      }
+    } else {
+      if (!window.confirm(`¿Seguro que deseas eliminar la categoría "${cat.nombre}"? Se borrará de la base de datos Firestore.`)) {
+        return;
+      }
     }
-
-    if (!window.confirm(`¿Seguro que deseas eliminar la categoría "${cat.nombre}"?`)) return;
 
     try {
       await categoriasService.eliminarCategoria(cat.id);

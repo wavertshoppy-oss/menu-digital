@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ShieldAlert } from 'lucide-react';
 import { PublicPage } from './components/public/PublicPage';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { AdminLogin } from './components/admin/AdminLogin';
@@ -17,7 +18,7 @@ import { configuracionService } from './services/configuracionService';
 import { ventasService } from './services/ventasService';
 import { inventarioService } from './services/inventarioService';
 import { produccionService } from './services/produccionService';
-import { usuariosService } from './services/usuariosService';
+import { usuariosService, normalizeRole } from './services/usuariosService';
 import { authService } from './services/authService';
 
 import {
@@ -71,6 +72,59 @@ export default function App() {
     }
   }, [cart]);
 
+  // URL parameter sync
+  useEffect(() => {
+    const handleUrlChange = () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const view = params.get('view');
+        const tab = params.get('tab') as AdminTab | null;
+        if (view === 'admin' || view === 'admin_login' || view === 'public') {
+          setCurrentView(view);
+        }
+        if (
+          tab &&
+          [
+            'dashboard',
+            'ventas',
+            'productos',
+            'inventario',
+            'produccion',
+            'categorias',
+            'usuarios',
+            'configuracion',
+          ].includes(tab)
+        ) {
+          setAdminTab(tab);
+        }
+      } catch (e) {
+        console.warn('URL parse warning:', e);
+      }
+    };
+
+    handleUrlChange();
+    window.addEventListener('popstate', handleUrlChange);
+    return () => window.removeEventListener('popstate', handleUrlChange);
+  }, []);
+
+  // Sync state back to URL query
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (currentView === 'admin') {
+        url.searchParams.set('view', 'admin');
+        url.searchParams.set('tab', adminTab);
+      } else if (currentView === 'admin_login') {
+        url.searchParams.set('view', 'admin_login');
+        url.searchParams.delete('tab');
+      } else {
+        url.searchParams.delete('view');
+        url.searchParams.delete('tab');
+      }
+      window.history.replaceState({}, '', url.toString());
+    } catch (_) {}
+  }, [currentView, adminTab]);
+
   // Real-time subscriptions to all services
   useEffect(() => {
     // 1. Auth subscription
@@ -108,13 +162,13 @@ export default function App() {
     });
 
     // 7. Produccion
-    const unsubProdReg = produccionService.suscribirProduccion((data: ProduccionRegistro[]) => {
+    const unsubProdReg = produccionService.suscribirProducciones((data: ProduccionRegistro[]) => {
       setProducciones(data);
     });
 
     // 8. Usuarios
-    const unsubUser = usuariosService.suscribirUsuarios((data: any[]) => {
-      setUsuarios(data as any);
+    const unsubUsers = usuariosService.suscribirUsuarios((data: Usuario[]) => {
+      setUsuarios(data);
     });
 
     return () => {
@@ -125,9 +179,9 @@ export default function App() {
       unsubVentas();
       unsubInv();
       unsubProdReg();
-      unsubUser();
+      unsubUsers();
     };
-  }, []);
+  }, [currentView]);
 
   // Cart Actions
   const handleAddToCart = (producto: Producto) => {
@@ -188,7 +242,7 @@ export default function App() {
     setCurrentView('admin');
   };
 
-  // Render Public Storefront
+  // 1. Public Storefront View
   if (currentView === 'public') {
     return (
       <PublicPage
@@ -205,8 +259,8 @@ export default function App() {
     );
   }
 
-  // Render Admin Login
-  if (currentView === 'admin_login') {
+  // 2. Admin Login View (if user explicitly went to login OR is unauthenticated trying to access admin)
+  if (currentView === 'admin_login' || !user) {
     return (
       <AdminLogin
         onLoginSuccess={handleLoginSuccess}
@@ -215,86 +269,128 @@ export default function App() {
     );
   }
 
-  // Render Admin Dashboard and Management
-  const currentAuthUser = user || {
-    uid: 'local-admin',
-    email: 'admin@deliciasbelgi.com',
-    displayName: 'Administrador Belgi',
-    role: 'admin',
-  };
+  // 3. User authenticated: Check roles and route protection
+  const userRole = normalizeRole(user.role);
+  const isCajero = userRole === 'cajero';
+
+  /**
+   * CAJERO Permissions:
+   * - Permitted: Dashboard, Ventas, Inventario
+   * - Restricted: Producción, Usuarios, Configuración, Categorías, Productos
+   */
+  const restrictedTabsForCajero: AdminTab[] = [
+    'productos',
+    'produccion',
+    'categorias',
+    'usuarios',
+    'configuracion',
+  ];
+
+  const isRestrictedForCajero = isCajero && restrictedTabsForCajero.includes(adminTab);
 
   return (
     <AdminLayout
       currentTab={adminTab}
-      onSelectTab={setAdminTab}
-      user={currentAuthUser}
+      onSelectTab={(tab) => setAdminTab(tab)}
+      user={user}
       onLogout={handleLogout}
       onBackToPublic={handleBackToPublic}
     >
-      {adminTab === 'dashboard' && (
-        <DashboardView
-          ventas={ventas}
-          productos={productos}
-          producciones={producciones}
-          onNavigateTab={setAdminTab}
-        />
-      )}
+      {/* If cajero attempts to enter a restricted section, enforce access denied message */}
+      {isRestrictedForCajero ? (
+        <div className="max-w-md mx-auto my-12 p-8 rounded-2xl bg-white border border-stone-200 shadow-sm text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto shadow-inner">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+          <div>
+            <h2 className="font-serif text-lg font-bold text-stone-900">
+              Acceso Restringido
+            </h2>
+            <p className="text-sm font-bold text-rose-700 mt-2">
+              No tienes permisos para acceder a esta sección.
+            </p>
+            <p className="text-xs text-stone-500 mt-1 max-w-xs mx-auto">
+              Tu rol de <strong>Cajero</strong> solo tiene acceso autorizado a <strong>Dashboard</strong>, <strong>Ventas</strong> e <strong>Inventario</strong>.
+            </p>
+          </div>
+          <div className="pt-2">
+            <button
+              onClick={() => setAdminTab('ventas')}
+              className="px-5 py-2.5 rounded-xl bg-amber-900 hover:bg-amber-800 text-white text-xs font-bold cursor-pointer transition-colors shadow-xs"
+            >
+              Ir a Terminal de Ventas
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {adminTab === 'dashboard' && (
+            <DashboardView
+              ventas={ventas}
+              productos={productos}
+              producciones={producciones}
+              onNavigateTab={setAdminTab}
+            />
+          )}
 
-      {adminTab === 'ventas' && (
-        <VentasView
-          ventas={ventas}
-          productos={productos}
-          user={currentAuthUser}
-          onRefreshData={() => {}}
-        />
-      )}
+          {adminTab === 'ventas' && (
+            <VentasView
+              ventas={ventas}
+              productos={productos}
+              user={user}
+              onRefreshData={() => {}}
+            />
+          )}
 
-      {adminTab === 'productos' && (
-        <ProductosView
-          productos={productos}
-          categorias={categorias}
-          onRefreshData={() => {}}
-        />
-      )}
+          {adminTab === 'inventario' && (
+            <InventarioView
+              productos={productos}
+              movimientos={movimientos}
+              user={user}
+              onRefreshData={() => {}}
+            />
+          )}
 
-      {adminTab === 'inventario' && (
-        <InventarioView
-          productos={productos}
-          movimientos={movimientos}
-          user={currentAuthUser}
-          onRefreshData={() => {}}
-        />
-      )}
+          {/* Admin-Only Tabs */}
+          {adminTab === 'productos' && (
+            <ProductosView
+              productos={productos}
+              categorias={categorias}
+              onRefreshData={() => {}}
+            />
+          )}
 
-      {adminTab === 'produccion' && (
-        <ProduccionView
-          producciones={producciones}
-          productos={productos}
-          user={currentAuthUser}
-          onRefreshData={() => {}}
-        />
-      )}
+          {adminTab === 'produccion' && (
+            <ProduccionView
+              producciones={producciones}
+              productos={productos}
+              user={user}
+              onRefreshData={() => {}}
+            />
+          )}
 
-      {adminTab === 'categorias' && (
-        <CategoriasView
-          categorias={categorias}
-          productos={productos}
-          onRefreshData={() => {}}
-        />
-      )}
+          {adminTab === 'categorias' && (
+            <CategoriasView
+              categorias={categorias}
+              productos={productos}
+              onRefreshData={() => {}}
+            />
+          )}
 
-      {adminTab === 'usuarios' && (
-        <UsuariosView
-          usuarios={usuarios}
-          onRefreshData={() => {}}
-        />
-      )}
+          {adminTab === 'usuarios' && (
+            <UsuariosView
+              usuarios={usuarios}
+              onRefreshData={() => {}}
+            />
+          )}
 
-      {adminTab === 'configuracion' && (
-        <ConfiguracionView
-          config={config}
-          onRefreshData={() => {}}
-        />
+          {adminTab === 'configuracion' && (
+            <ConfiguracionView
+              config={config}
+              onRefreshData={() => {}}
+            />
+          )}
+        </>
       )}
     </AdminLayout>
   );

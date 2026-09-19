@@ -9,7 +9,6 @@ import {
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured, handleFirestoreError, OperationType } from './firebase';
 import { Categoria } from '../types';
-import { authService } from './authService';
 
 const LOCAL_STORAGE_KEY = 'delicias_belgi_categorias';
 
@@ -42,14 +41,23 @@ function saveLocalCategorias(items: Categoria[]) {
 
 export const categoriasService = {
   subscribeToCategorias(callback: (items: Categoria[]) => void): () => void {
+    // 1. Emit local data immediately
+    const initialLocal = getLocalCategorias();
+    callback(initialLocal);
+
+    // 2. Always listen to local custom events for instant optimistic updates
+    const handler = () => callback(getLocalCategorias());
+    window.addEventListener('delicias_categorias_changed', handler);
+
+    let unsubFirestore: (() => void) | null = null;
     if (isFirebaseConfigured() && db) {
       try {
         const colRef = collection(db, 'categorias');
-        return onSnapshot(
+        unsubFirestore = onSnapshot(
           colRef,
           async (snapshot) => {
             if (snapshot.empty) {
-              callback(INITIAL_CATEGORIAS);
+              callback(getLocalCategorias());
               return;
             }
             const list: Categoria[] = [];
@@ -67,6 +75,7 @@ export const categoriasService = {
               });
             });
             list.sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+            saveLocalCategorias(list);
             callback(list);
           },
           (error) => {
@@ -78,10 +87,11 @@ export const categoriasService = {
         console.warn('Error setting up onSnapshot for categorias:', err);
       }
     }
-    callback(getLocalCategorias());
-    const handler = () => callback(getLocalCategorias());
-    window.addEventListener('delicias_categorias_changed', handler);
-    return () => window.removeEventListener('delicias_categorias_changed', handler);
+
+    return () => {
+      window.removeEventListener('delicias_categorias_changed', handler);
+      if (unsubFirestore) unsubFirestore();
+    };
   },
 
   async getCategorias(): Promise<Categoria[]> {
@@ -119,7 +129,6 @@ export const categoriasService = {
 
     if (isFirebaseConfigured() && db) {
       try {
-        await authService.ensureAnonymousAuth();
         const colRef = collection(db, 'categorias');
         const docRef = await addDoc(colRef, payload);
         return { id: docRef.id, ...payload };
@@ -144,7 +153,6 @@ export const categoriasService = {
 
     if (isFirebaseConfigured() && db) {
       try {
-        await authService.ensureAnonymousAuth();
         const docRef = doc(db, 'categorias', id);
         await updateDoc(docRef, payload);
         return;
@@ -162,12 +170,10 @@ export const categoriasService = {
   },
 
   async deleteCategoria(id: string): Promise<void> {
-    if (isFirebaseConfigured() && db) {
+    if (isFirebaseConfigured() && db && id) {
       try {
-        await authService.ensureAnonymousAuth();
         const docRef = doc(db, 'categorias', id);
         await deleteDoc(docRef);
-        return;
       } catch (error: any) {
         console.warn('Aviso: Categoría eliminada localmente (Firestore usando fallback):', error?.message || error);
       }

@@ -9,7 +9,6 @@ import {
 import { db, isFirebaseConfigured } from './firebase';
 import { MovimientoInventario, Producto, TipoMovimientoInventario } from '../types';
 import { productosService } from './productosService';
-import { authService } from './authService';
 
 const LOCAL_STORAGE_KEY = 'delicias_belgi_movimientos';
 
@@ -58,12 +57,25 @@ function normalizeMovimiento(id: string, data: any): MovimientoInventario {
 
 export const inventarioService = {
   subscribeToMovimientos(callback: (items: MovimientoInventario[]) => void): () => void {
+    // 1. Emit local data immediately
+    const initialLocal = getLocalMovimientos();
+    callback(initialLocal);
+
+    // 2. Always listen to local custom events for immediate updates
+    const handler = () => callback(getLocalMovimientos());
+    window.addEventListener('delicias_movimientos_changed', handler);
+
+    let unsubFirestore: (() => void) | null = null;
     if (isFirebaseConfigured() && db) {
       try {
         const colRef = collection(db, 'inventario_movimientos');
-        return onSnapshot(
+        unsubFirestore = onSnapshot(
           colRef,
           (snapshot) => {
+            if (snapshot.empty) {
+              callback(getLocalMovimientos());
+              return;
+            }
             const list: MovimientoInventario[] = [];
             snapshot.forEach((d) => {
               list.push(normalizeMovimiento(d.id, d.data()));
@@ -81,10 +93,11 @@ export const inventarioService = {
         console.warn('Error setting up subscribeToMovimientos:', err);
       }
     }
-    callback(getLocalMovimientos());
-    const handler = () => callback(getLocalMovimientos());
-    window.addEventListener('delicias_movimientos_changed', handler);
-    return () => window.removeEventListener('delicias_movimientos_changed', handler);
+
+    return () => {
+      window.removeEventListener('delicias_movimientos_changed', handler);
+      if (unsubFirestore) unsubFirestore();
+    };
   },
 
   async registrarMovimiento(mov: Omit<MovimientoInventario, 'id'>): Promise<MovimientoInventario> {
@@ -114,7 +127,6 @@ export const inventarioService = {
     let docId = 'mov-' + Date.now();
     if (isFirebaseConfigured() && db) {
       try {
-        await authService.ensureAnonymousAuth();
         const colRef = collection(db, 'inventario_movimientos');
         const docRef = await addDoc(colRef, payload);
         docId = docRef.id;
@@ -314,9 +326,12 @@ export const inventarioService = {
   async deleteMovimiento(id: string): Promise<void> {
     if (isFirebaseConfigured() && db && id) {
       try {
-        await authService.ensureAnonymousAuth();
         const docRef = doc(db, 'inventario_movimientos', id);
         await deleteDoc(docRef);
+        try {
+          const legRef = doc(db, 'movimientos_inventario', id);
+          await deleteDoc(legRef);
+        } catch (_) {}
       } catch (e: any) {
         console.warn('Aviso: Movimiento eliminado localmente (Firestore fallback):', e);
       }
@@ -326,10 +341,13 @@ export const inventarioService = {
     saveLocalMovimientos(filtered);
   },
 
+  async eliminarMovimiento(id: string): Promise<void> {
+    return this.deleteMovimiento(id);
+  },
+
   async clearAllMovimientos(): Promise<void> {
     if (isFirebaseConfigured() && db) {
       try {
-        await authService.ensureAnonymousAuth();
         const colRef = collection(db, 'inventario_movimientos');
         const snap = await getDocs(colRef);
         for (const d of snap.docs) {

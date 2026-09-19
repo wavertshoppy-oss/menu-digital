@@ -11,7 +11,6 @@ import { db, isFirebaseConfigured } from './firebase';
 import { ProduccionRegistro, Producto } from '../types';
 import { productosService } from './productosService';
 import { inventarioService } from './inventarioService';
-import { authService } from './authService';
 
 export const INITIAL_PRODUCCIONES: ProduccionRegistro[] = [
   {
@@ -196,6 +195,10 @@ export const produccionService = {
     return this.subscribeToProducciones(callback);
   },
 
+  suscribirProducciones(callback: (items: ProduccionRegistro[]) => void): () => void {
+    return this.subscribeToProducciones(callback);
+  },
+
   async registrarProduccion(
     productoOrData: Producto | {
       producto: string;
@@ -306,7 +309,6 @@ export const produccionService = {
     let docId = 'prod-rec-' + Date.now();
     if (isFirebaseConfigured() && db) {
       try {
-        await authService.ensureAnonymousAuth();
         const colRef = collection(db, 'producciones');
         const docRef = await addDoc(colRef, payload);
         docId = docRef.id;
@@ -372,7 +374,6 @@ export const produccionService = {
 
     if (isFirebaseConfigured() && db) {
       try {
-        await authService.ensureAnonymousAuth();
         const docRef = doc(db, 'producciones', produccionId);
         await setDoc(docRef, updatePayload, { merge: true });
       } catch (e: any) {
@@ -421,7 +422,6 @@ export const produccionService = {
 
     if (produccion.id && isFirebaseConfigured() && db) {
       try {
-        await authService.ensureAnonymousAuth();
         const docRef = doc(db, 'producciones', produccion.id);
         await deleteDoc(docRef);
       } catch (e: any) {
@@ -442,7 +442,6 @@ export const produccionService = {
     }
     if (isFirebaseConfigured() && db && id) {
       try {
-        await authService.ensureAnonymousAuth();
         const docRef = doc(db, 'producciones', id);
         await deleteDoc(docRef);
       } catch (e) {
@@ -455,7 +454,6 @@ export const produccionService = {
   async clearAllProducciones(): Promise<void> {
     if (isFirebaseConfigured() && db) {
       try {
-        await authService.ensureAnonymousAuth();
         const colRef = collection(db, 'producciones');
         const snap = await getDocs(colRef);
         for (const d of snap.docs) {

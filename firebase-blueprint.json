@@ -142,9 +142,27 @@
         }
       },
       "required": ["nombre", "whatsapp", "moneda"]
+    },
+    "Usuario": {
+      "title": "Usuario",
+      "description": "Perfil y rol de usuario del sistema (identificado por UID de Firebase Auth)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "UID de Firebase Authentication" },
+        "nombre": { "type": "string", "description": "Nombre completo del usuario" },
+        "email": { "type": "string", "format": "email", "description": "Correo electrónico" },
+        "rol": { "type": "string", "description": "admin o cajero" },
+        "activo": { "type": "boolean", "description": "Estado activo/inactivo del usuario" },
+        "fechaCreacion": { "type": "string", "format": "date-time", "description": "Fecha de creación del perfil" }
+      },
+      "required": ["uid", "nombre", "email", "rol", "activo", "fechaCreacion"]
     }
   },
   "firestore": {
+    "/usuarios/{userId}": {
+      "schema": "Usuario",
+      "description": "Perfiles y roles de usuario por UID de Firebase Authentication"
+    },
     "/orders/{orderId}": {
       "schema": "Order",
       "description": "Pedidos en tiempo real del menú digital para Caja y Administración"

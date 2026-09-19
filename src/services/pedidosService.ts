@@ -10,7 +10,6 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured, handleFirestoreError, OperationType } from './firebase';
-import { authService } from './authService';
 import { clientesService } from './clientesService';
 import { ventasService } from './ventasService';
 import { Pedido, PedidoEstado, PedidoProductoItem, TipoPedido } from '../types';
@@ -280,7 +279,6 @@ export const pedidosService = {
 
     if (isFirebaseConfigured() && db) {
       try {
-        await authService.ensureAnonymousAuth();
         // 1. Write to primary 'orders' collection
         const ordersCol = collection(db, 'orders');
         const docRef = await addDoc(ordersCol, newOrderPayload);

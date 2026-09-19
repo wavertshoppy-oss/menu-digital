@@ -11,7 +11,6 @@ import { db, isFirebaseConfigured } from './firebase';
 import { Venta, VentaItem, Producto } from '../types';
 import { productosService } from './productosService';
 import { inventarioService } from './inventarioService';
-import { authService } from './authService';
 import { INITIAL_VENTAS } from './initialData';
 
 const LOCAL_STORAGE_KEY = 'delicias_belgi_ventas';
@@ -330,7 +329,6 @@ export const ventasService = {
     let docId = 'vta-' + Date.now();
     if (isFirebaseConfigured() && db) {
       try {
-        await authService.ensureAnonymousAuth();
         const colRef = collection(db, 'ventas');
         const docRef = await addDoc(colRef, payload);
         docId = docRef.id;
@@ -430,7 +428,6 @@ export const ventasService = {
 
     if (venta.id && isFirebaseConfigured() && db) {
       try {
-        await authService.ensureAnonymousAuth();
         const docRef = doc(db, 'ventas', venta.id);
         await setDoc(docRef, updatePayload, { merge: true });
       } catch (e: any) {

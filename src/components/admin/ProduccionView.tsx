@@ -174,7 +174,11 @@ export const ProduccionView: React.FC<ProduccionViewProps> = ({
   };
 
   const handleDeleteProduccion = async (prod: ProduccionRegistro) => {
-    if (!window.confirm(`¿Deseas anular el lote ${prod.lote || 'seleccionado'}? Se restarán -${prod.cantidad} unidades del stock actual de ${prod.producto}.`)) {
+    if (
+      !window.confirm(
+        `¿Deseas anular y eliminar el lote "${prod.lote || 'Sin código'}" (${prod.producto})? Se eliminará de la base de datos Firestore y se restarán -${prod.cantidad} unidades del stock.`
+      )
+    ) {
       return;
     }
 
@@ -183,7 +187,8 @@ export const ProduccionView: React.FC<ProduccionViewProps> = ({
       const targetProd = productos.find((p) => p.id === prod.productoId || p.nombre === prod.producto);
       await produccionService.eliminarProduccion(prod, targetProd, user.displayName || user.email || 'Admin');
       setListaProducciones((prev) => prev.filter((p) => p.id !== prod.id));
-      setBannerMensaje(`El lote ${prod.lote || ''} fue revertido y las ${prod.cantidad} unidades fueron deducidas del inventario.`);
+      setBannerMensaje(`El lote ${prod.lote || ''} fue eliminado de Firestore y las ${prod.cantidad} unidades fueron deducidas del inventario.`);
+      setDetalleModal(null);
       onRefreshData?.();
     } catch (err: any) {
       alert('Error al eliminar lote: ' + err.message);
@@ -638,7 +643,16 @@ export const ProduccionView: React.FC<ProduccionViewProps> = ({
               )}
             </div>
 
-            <div className="pt-2 flex justify-end">
+            <div className="pt-3 border-t border-stone-100 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => handleDeleteProduccion(detalleModal)}
+                disabled={deletingId === detalleModal.id}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold cursor-pointer text-xs transition-colors border border-rose-200 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Eliminar Lote de Firestore</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setDetalleModal(null)}

@@ -1,63 +1,126 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper functions
+
+    // Helper functions for Authentication and RBAC
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // 1. PRODUCTS & PRODUCTOS (Catálogo del Menú Digital)
+    function getUserData() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+    }
+
+    function hasUserDoc() {
+      return isSignedIn() && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid));
+    }
+
+    function isUserActive() {
+      return !hasUserDoc() || getUserData().activo == true;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && isUserActive() && (
+        request.auth.token.email == 'wavertshoppy@gmail.com' ||
+        (hasUserDoc() && (getUserData().rol == 'admin' || getUserData().role == 'admin'))
+      );
+    }
+
+    function isCajero() {
+      return isSignedIn() && isUserActive() && (
+        hasUserDoc() && (getUserData().rol == 'cajero' || getUserData().role == 'cajero')
+      );
+    }
+
+    function isStaff() {
+      return isAdmin() || isCajero();
+    }
+
+    // 1. USUARIOS COLLECTION
+    // Keyed by Firebase Auth UID: /usuarios/{userId} where userId == request.auth.uid
+    match /usuarios/{userId} {
+      // Users can read their own profile; Admins can read all profiles
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+
+      // An authenticated user can create their own profile on first login (with their own UID),
+      // or an Admin can create any profile.
+      allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+
+      // Only Admin can update roles or status. Users can only update their own non-privileged info.
+      allow update: if isAdmin() || (
+        isSignedIn() && request.auth.uid == userId &&
+        request.resource.data.rol == resource.data.rol &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.activo == resource.data.activo
+      );
+
+      // Only Admin can delete user profiles
+      allow delete: if isAdmin();
+    }
+
+    // 2. PRODUCTS & PRODUCTOS (Public catalog for digital menu; only Admin can modify)
     match /products/{productId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin();
     }
     match /productos/{productoId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
-    // 2. ORDERS & PEDIDOS (Flujo en tiempo real Menú -> Caja)
+    // 3. CATEGORIAS (Catalog categories; only Admin can modify)
+    match /categorias/{categoriaId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 4. CONFIGURACION (Business settings, receipt info; only Admin can modify)
+    match /configuracion/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 5. PRODUCCIONES (Manufacturing records; strictly Admin only)
+    match /producciones/{produccionId} {
+      allow read, write: if isAdmin();
+    }
+
+    // 6. VENTAS (Sales management; Cajero and Admin can read & create; only Admin can update/delete)
+    match /ventas/{ventaId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if isAdmin();
+    }
+
+    // 7. INVENTARIO & MOVIMIENTOS (Stock control; Cajero & Admin can view and register; only Admin can modify audit logs)
+    match /inventario_movimientos/{movId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if isAdmin();
+    }
+    match /movimientos_inventario/{movId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if isAdmin();
+    }
+
+    // 8. ORDERS & PEDIDOS (Online orders; public can place orders; staff can manage)
     match /orders/{orderId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if true;
+      allow update: if isStaff();
+      allow delete: if isAdmin();
     }
     match /pedidos/{pedidoId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if true;
+      allow update: if isStaff();
+      allow delete: if isAdmin();
     }
 
-    // 3. USUARIOS
-    match /usuarios/{userId} {
-      allow read, write: if true;
-    }
-
-    // 4. CONFIGURACION
-    match /configuracion/{configId} {
-      allow read, write: if true;
-    }
-
-    // 5. VENTAS (Ventas históricas, manuales y eliminación)
-    match /ventas/{ventaId} {
-      allow read, write: if true;
-    }
-
-    // 6. CATEGORIAS: Lectura y gestión del catálogo
-    match /categorias/{categoriaId} {
-      allow read, write: if true;
-    }
-
-    // 7. CLIENTES: Registro de clientes
+    // 9. CLIENTES (Customer directory)
     match /clientes/{clienteId} {
-      allow read, write: if true;
-    }
-
-    // 8. MOVIMIENTOS DE INVENTARIO: Control y auditoría de stock
-    match /movimientos_inventario/{movId} {
-      allow read, write: if true;
-    }
-    match /inventario_movimientos/{movId} {
-      allow read, write: if true;
-    }
-
-    // 9. PRODUCCIONES: Registro manual de fabricación diaria
-    match /producciones/{produccionId} {
-      allow read, write: if true;
+      allow read, write: if isStaff();
     }
   }
 }

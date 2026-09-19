@@ -8,36 +8,28 @@ export type AdminTab =
   | 'usuarios'
   | 'configuracion';
 
-export type UserRole = 'admin' | 'caja';
+export type UserRole = 'admin' | 'cajero';
 
 export interface UserAuth {
   uid: string;
   email: string | null;
   displayName?: string | null;
-  role?: UserRole;
+  role: UserRole;
 }
 
 export interface UsuarioDoc {
   uid: string;
+  id: string;
   email: string;
-  nombre?: string;
+  nombre: string;
   role: UserRole;
-  rol?: UserRole;
-  activo?: boolean;
-  id?: string;
+  rol: UserRole;
+  activo: boolean;
+  fechaCreacion: string;
   createdAt?: string;
 }
 
-export interface Usuario {
-  id: string;
-  uid?: string;
-  email: string;
-  nombre: string;
-  rol: UserRole;
-  role?: UserRole;
-  activo: boolean;
-  createdAt?: string;
-}
+export type Usuario = UsuarioDoc;
 
 export interface Producto {
   id?: string;

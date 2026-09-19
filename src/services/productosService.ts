@@ -1,7 +1,6 @@
 import { collection, getDocs, doc, addDoc, updateDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db, isFirebaseConfigured, handleFirestoreError, OperationType } from './firebase';
 import { Producto } from '../types';
-import { authService } from './authService';
 import { INITIAL_PRODUCTOS } from './initialData';
 
 const LOCAL_STORAGE_KEY = 'delicias_belgi_productos';
@@ -48,10 +47,19 @@ function saveLocalProductos(items: Producto[]) {
 
 export const productosService = {
   subscribeToProductos(callback: (items: Producto[]) => void): () => void {
+    // 1. Emit local data immediately
+    const initialLocal = getLocalProductos();
+    callback(initialLocal);
+
+    // 2. Always listen to local custom events for instant optimistic feedback
+    const handler = () => callback(getLocalProductos());
+    window.addEventListener('delicias_productos_changed', handler);
+
+    let unsubFirestore: (() => void) | null = null;
     if (isFirebaseConfigured() && db) {
       try {
         const colRef = collection(db, 'productos');
-        return onSnapshot(
+        unsubFirestore = onSnapshot(
           colRef,
           (snapshot) => {
             if (snapshot.empty) {
@@ -62,6 +70,7 @@ export const productosService = {
             snapshot.forEach((docSnap) => {
               list.push(normalizeProducto(docSnap.id, docSnap.data()));
             });
+            saveLocalProductos(list);
             callback(list);
           },
           (error) => {
@@ -73,11 +82,11 @@ export const productosService = {
         console.warn('Error setting up onSnapshot for productos:', err);
       }
     }
-    // Fallback mode
-    callback(getLocalProductos());
-    const handler = () => callback(getLocalProductos());
-    window.addEventListener('delicias_productos_changed', handler);
-    return () => window.removeEventListener('delicias_productos_changed', handler);
+
+    return () => {
+      window.removeEventListener('delicias_productos_changed', handler);
+      if (unsubFirestore) unsubFirestore();
+    };
   },
 
   async getProductosActivos(): Promise<Producto[]> {
@@ -141,7 +150,6 @@ export const productosService = {
 
     if (isFirebaseConfigured() && db) {
       try {
-        await authService.ensureAnonymousAuth();
         const colRef = collection(db, 'productos');
         const docRef = await addDoc(colRef, docPayload);
         return { id: docRef.id, ...docPayload };
@@ -184,7 +192,6 @@ export const productosService = {
 
     if (isFirebaseConfigured() && db) {
       try {
-        await authService.ensureAnonymousAuth();
         const docRef = doc(db, 'productos', id);
         await setDoc(docRef, updatePayload, { merge: true });
       } catch (error: any) {
@@ -206,11 +213,14 @@ export const productosService = {
   },
 
   async deleteProducto(id: string): Promise<void> {
-    if (isFirebaseConfigured() && db) {
+    if (isFirebaseConfigured() && db && id) {
       try {
-        await authService.ensureAnonymousAuth();
         const docRef = doc(db, 'productos', id);
         await deleteDoc(docRef);
+        try {
+          const legRef = doc(db, 'products', id);
+          await deleteDoc(legRef);
+        } catch (_) {}
       } catch (error: any) {
         console.warn('Aviso: Producto eliminado localmente (Firestore usando fallback):', error?.message || error);
       }
